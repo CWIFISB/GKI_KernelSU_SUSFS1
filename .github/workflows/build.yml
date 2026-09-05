@@ -421,8 +421,11 @@ jobs:
               BRANCH="-s main"
               ;;
             "SukiSU")
-              # 留空 -> setup.sh 自动 checkout 最新稳定 tag
-              BRANCH=""
+              if [ "${{ inputs.enable_susfs }}" = "false" ]; then
+                BRANCH="-s main"
+              else
+                BRANCH="-s builtin"
+              fi
               ;;
             "Next")
               BRANCH=""
@@ -1328,3 +1331,4 @@ jobs:
           path: patch-rejects/
           if-no-files-found: ignore
           compression-level: 9
+
