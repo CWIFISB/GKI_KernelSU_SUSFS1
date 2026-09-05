@@ -29,7 +29,15 @@ case "$KSU_VARIANT" in
     cd ..
     ;;
   "Next"|"SukiSU"|"SukiSU(40726)"|"SukiSU(40548)"|"ReSukiSU")
-    echo "Next/SukiSU/SukiSU(40726)/SukiSU(40548)/ReSukiSU 使用内置 SUSFS 支持"
+    cd ./KernelSU
+    cp $SUSFS4KSU/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+    # 兼容旧版补丁：仅当补丁仍只修改 kernel/Makefile 时，才替换为 kernel/Kbuild
+    if grep -q '^diff --git a/kernel/Makefile b/kernel/Makefile' ./10_enable_susfs_for_ksu.patch \
+      && ! grep -q '^diff --git a/kernel/Kbuild b/kernel/Kbuild' ./10_enable_susfs_for_ksu.patch; then
+      sed -i 's|kernel/Makefile|kernel/Kbuild|g' ./10_enable_susfs_for_ksu.patch
+    fi
+    patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
+    cd ..
     ;;
 esac
 
