@@ -854,6 +854,15 @@ jobs:
           echo '# CONFIG_IKCONFIG_PROC is not set' >> "$DEFCONFIG"
           grep -n 'IKCONFIG' "$DEFCONFIG" || true
 
+          # 4) 关闭 ENABLE_LOG 后补全 susfs.c 空宏分支（上游 #else 漏定义 LOGI_RL/LOGE_RL）
+          SUSFS_C="fs/susfs.c"
+          if [ ! -f "$SUSFS_C" ]; then
+            echo "::error::$SUSFS_C 不存在" >&2
+            exit 1
+          fi
+          python3 "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs_log_guard.py" "$SUSFS_C"
+          grep -n "susfs_log_guard" "$SUSFS_C"
+
       - name: 生成 SUSFS 集成补丁
         if: env.SUSFS_PATCH_EXPORT == 'true'
         working-directory: ${{ env.KERNEL_ROOT }}/common
