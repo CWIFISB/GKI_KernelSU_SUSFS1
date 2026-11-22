@@ -842,26 +842,13 @@ jobs:
             echo "::error::$ARR 不存在" >&2
             exit 1
           fi
-          if grep -q 'susfs_tracerpid_hide' "$ARR"; then
+          if grep -q 'proc_hide_tracerpid' "$ARR"; then
             echo "TracerPid hook 已存在，跳过"
           else
             python3 "$GITHUB_WORKSPACE/scripts/susfs_fixes/tracerpid_hide.py" "$ARR"
-            grep -n 'susfs_tracerpid_hide' "$ARR"
+            grep -n 'proc_hide_tracerpid' "$ARR"
           fi
 
-          # 3) 关闭 /proc/config.gz（IKCONFIG_PROC）
-          sed -i '/^CONFIG_IKCONFIG_PROC=/d; /^# CONFIG_IKCONFIG_PROC is not set$/d' "$DEFCONFIG"
-          echo '# CONFIG_IKCONFIG_PROC is not set' >> "$DEFCONFIG"
-          grep -n 'IKCONFIG' "$DEFCONFIG" || true
-
-          # 4) 关闭 ENABLE_LOG 后补全 susfs.c 空宏分支（上游 #else 漏定义 LOGI_RL/LOGE_RL）
-          SUSFS_C="fs/susfs.c"
-          if [ ! -f "$SUSFS_C" ]; then
-            echo "::error::$SUSFS_C 不存在" >&2
-            exit 1
-          fi
-          python3 "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs_log_guard.py" "$SUSFS_C"
-          grep -n "susfs_log_guard" "$SUSFS_C"
 
       - name: 生成 SUSFS 集成补丁
         if: env.SUSFS_PATCH_EXPORT == 'true'
@@ -1586,6 +1573,7 @@ jobs:
             CONFIG_KSU_SUSFS_SUS_MOUNT
             CONFIG_KSU_SUSFS_SUS_KSTAT
             CONFIG_KSU_SUSFS_SPOOF_UNAME
+            CONFIG_KSU_SUSFS_ENABLE_LOG
             CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
             CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
             CONFIG_KSU_SUSFS_OPEN_REDIRECT
@@ -1608,8 +1596,6 @@ jobs:
 
           LINES_BEFORE=$(wc -l < "$DEFCONFIG")
           printf '%s=y\n' "${SUSFS_CONFIGS[@]}" >> "$DEFCONFIG"
-          # 反检测：关闭 SUSFS 内核日志（否则 dmesg 出现 susfs: 前缀）
-          echo '# CONFIG_KSU_SUSFS_ENABLE_LOG is not set' >> "$DEFCONFIG"
 
           # 把本步实际追加的行导出为配置片段，随 SUSFS 集成补丁一起分发
           if [ "$SUSFS_PATCH_EXPORT" = "true" ] && [ -d "$GITHUB_WORKSPACE/susfs-patch" ]; then
