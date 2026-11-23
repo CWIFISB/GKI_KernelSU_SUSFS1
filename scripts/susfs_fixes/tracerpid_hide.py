@@ -1,43 +1,58 @@
 #!/usr/bin/env python3
-"""TracerPid 隐藏，采用 dev-dcs 已验证的自包含写法。
+"""TracerPid 只对同 uid 的 tracer 显示。
 
-原型：dev-dcs/New-GKI-Dev_DcS-Way kernel-patches/hardening/0001-proc-hide-tracerpid.patch
-  1) 文件内 static 标志，不引用任何外部符号，任何变体都能链接；
-  2) task_state() 里 `if (hide_tracerpid) tpid = 0;` 就地清零。
-本实现差异：默认值 1（开机即生效），且不注册 sysctl，避免多出原厂没有的
-/proc/sys/kernel/hide_tracerpid 节点。
+参照 rev1si0n/android_kernel_oneplus_msm8998 的 fs/proc/array.c：
+  tracer = ptrace_parent(p);
+  if (tracer && (get_task_uid(tracer) == get_task_uid(p)))
+      tpid = task_pid_nr_ns(tracer, ns);
+即 root/frida/gdb 等跨 uid 附加时 TracerPid 恒为 0，同 uid 调试仍可见。
+不搬它的 State 三元改写（会把所有进程的 State 固定成 R (running)）。
+幂等；锚点缺失即报错退出。
 """
 import sys
 
 p = sys.argv[1]
 s = open(p, encoding='utf-8', errors='surrogateescape').read()
 
-MARK = 'proc_hide_tracerpid'
+MARK = 'susfs_get_task_uid'
 
 if MARK in s:
     print('already patched ->', p)
     sys.exit(0)
 
-decl_anchor = 'static inline void task_state(struct seq_file *m, struct pid_namespace *ns,\n'
-if decl_anchor not in s:
-    sys.exit('ERROR: task_state anchor missing in ' + p)
+# 1) 辅助函数：紧跟 #include "internal.h"
+inc_anchor = '#include "internal.h"\n'
+if inc_anchor not in s:
+    sys.exit('ERROR: internal.h anchor missing in ' + p)
 
-decl = (
-    '/* ' + MARK + ': 1 = TracerPid 恒报 0（默认开启，不注册 sysctl 节点） */\n'
-    'static int hide_tracerpid __read_mostly = 1;\n'
+helper = (
     '\n'
+    '/* ' + MARK + ': 取 task 的真实 uid，用于 TracerPid 同源判定 */\n'
+    'static inline uid_t ' + MARK + '(struct task_struct *task)\n'
+    '{\n'
+    '\tuid_t uid = 0;\n'
+    '\tconst struct cred *cred;\n'
+    '\n'
+    '\tcred = get_task_cred(task);\n'
+    '\tuid = cred->uid.val;\n'
+    '\n'
+    '\tput_cred(cred);\n'
+    '\treturn uid;\n'
+    '}\n'
 )
-s = s.replace(decl_anchor, decl + decl_anchor, 1)
+s = s.replace(inc_anchor, inc_anchor + helper, 1)
 
-use_anchor = '\tseq_put_decimal_ull(m, "\\nTracerPid:\\t", tpid);\n'
+# 2) TracerPid 判定：只对同 uid 的 tracer 报告
+use_anchor = '\ttracer = ptrace_parent(p);\n\tif (tracer)\n'
 if use_anchor not in s:
-    sys.exit('ERROR: TracerPid anchor missing in ' + p)
+    sys.exit('ERROR: ptrace_parent anchor missing in ' + p)
 
-use = (
-    '\tif (hide_tracerpid)\n'
-    '\t\ttpid = 0;\n'
+use_new = (
+    '\ttracer = ptrace_parent(p);\n'
+    '\t/* ' + MARK + ': 跨 uid 的 tracer（root/frida/gdb）不报告 */\n'
+    '\tif (tracer && (' + MARK + '(tracer) == ' + MARK + '(p)))\n'
 )
-s = s.replace(use_anchor, use + use_anchor, 1)
+s = s.replace(use_anchor, use_new, 1)
 
 open(p, 'w', encoding='utf-8', errors='surrogateescape').write(s)
 print('injected ' + MARK + ' ->', p)
