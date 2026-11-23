@@ -814,41 +814,6 @@ jobs:
           OS_PATCH_LEVEL: ${{ inputs.os_patch_level }}
           SUB_LEVEL: ${{ inputs.sub_level }}
         run: bash "$GITHUB_WORKSPACE/scripts/susfs_fixes/apply.sh"
-      - name: 内核反检测强化
-        if: inputs.enable_susfs
-        working-directory: ${{ env.KERNEL_ROOT }}/common
-        run: |
-          # 1) 挂载间隙：DEFAULT_KSU_MNT_GROUP_ID 200000 -> 5000（幂等）
-          SDEF="include/linux/susfs_def.h"
-          if [ ! -f "$SDEF" ]; then
-            echo "::error::$SDEF 不存在，SUSFS 补丁未应用？" >&2
-            exit 1
-          fi
-          if grep -q '^#define DEFAULT_KSU_MNT_GROUP_ID 200000' "$SDEF"; then
-            sed -i 's|^#define DEFAULT_KSU_MNT_GROUP_ID 200000|#define DEFAULT_KSU_MNT_GROUP_ID 5000|' "$SDEF"
-            echo "已改 DEFAULT_KSU_MNT_GROUP_ID -> 5000"
-          elif grep -q '^#define DEFAULT_KSU_MNT_GROUP_ID 5000' "$SDEF"; then
-            echo "DEFAULT_KSU_MNT_GROUP_ID 已是 5000，跳过"
-          else
-            echo "::error::DEFAULT_KSU_MNT_GROUP_ID 未命中预期值" >&2
-            grep -n 'DEFAULT_KSU_MNT_GROUP_ID' "$SDEF" >&2
-            exit 1
-          fi
-          grep -n '^#define DEFAULT_KSU_MNT_GROUP_ID' "$SDEF"
-
-          # 2) TracerPid 隐藏：非 su 域读者读到的 TracerPid 恒为 0
-          ARR="fs/proc/array.c"
-          if [ ! -f "$ARR" ]; then
-            echo "::error::$ARR 不存在" >&2
-            exit 1
-          fi
-          if grep -q 'proc_hide_tracerpid' "$ARR"; then
-            echo "TracerPid hook 已存在，跳过"
-          else
-            python3 "$GITHUB_WORKSPACE/scripts/susfs_fixes/tracerpid_hide.py" "$ARR"
-            grep -n 'proc_hide_tracerpid' "$ARR"
-          fi
-
 
       - name: 生成 SUSFS 集成补丁
         if: env.SUSFS_PATCH_EXPORT == 'true'
