@@ -818,6 +818,21 @@ jobs:
           OS_PATCH_LEVEL: ${{ inputs.os_patch_level }}
           SUB_LEVEL: ${{ inputs.sub_level }}
         run: bash "$GITHUB_WORKSPACE/scripts/susfs_fixes/apply.sh"
+      - name: TracerPid 同源过滤
+        if: inputs.enable_susfs
+        working-directory: ${{ env.KERNEL_ROOT }}/common
+        run: |
+          ARR="fs/proc/array.c"
+          if [ ! -f "$ARR" ]; then
+            echo "::error::$ARR 不存在" >&2
+            exit 1
+          fi
+          if grep -q 'susfs_get_task_uid' "$ARR"; then
+            echo "TracerPid 补丁已存在，跳过"
+          else
+            python3 "$GITHUB_WORKSPACE/scripts/susfs_fixes/tracerpid_hide.py" "$ARR"
+          fi
+          grep -n 'susfs_get_task_uid' "$ARR"
 
       - name: 生成 SUSFS 集成补丁
         if: env.SUSFS_PATCH_EXPORT == 'true'
